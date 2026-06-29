@@ -131,7 +131,10 @@ onMounted(() => {
             <el-button @click="goToCreate" type="primary" size="small">
               发布模板
             </el-button>
-            <span class="user-name">{{ userStore.userInfo.username }}</span>
+            <router-link :to="`/profile/${userStore.userInfo.id}`" class="user-name">
+              {{ userStore.userInfo.username }}
+            </router-link>
+            <router-link to="/favorites" class="nav-link">我的收藏</router-link>
             <el-button plain size="small" @click="handleLogout">退出</el-button>
           </template>
           <template v-else>
@@ -335,6 +338,12 @@ onMounted(() => {
 .user-name {
   font-size: 14px;
   color: #475569;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.user-name:hover {
+  color: #4f46e5;
 }
 
 /* ==================== Hero ==================== */

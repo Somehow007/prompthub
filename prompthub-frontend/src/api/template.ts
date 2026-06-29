@@ -146,3 +146,8 @@ export function rollback(templateId: number, versionId: number): Promise<Templat
 export function searchTemplates(keyword: string, page?: number, size?: number): Promise<Page<TemplateVO>> {
   return request.get('/templates/search', { params: { keyword, page: page || 1, size: size || 12 } })
 }
+
+/** 记录模板使用 */
+export function recordUse(templateId: number, inputParams?: string): Promise<void> {
+  return request.post(`/templates/${templateId}/use`, null, { params: { inputParams } })
+}

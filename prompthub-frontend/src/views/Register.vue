@@ -105,6 +105,7 @@ async function handleRegister() {
       <!-- 右侧表单区 -->
       <div class="form-side">
         <div class="form-box">
+          <router-link to="/" class="back-home">← 返回首页</router-link>
           <h2 class="form-title">注册</h2>
           <p class="form-sub">创建你的账号，开启 AI Prompt 创作之旅</p>
 
@@ -292,6 +293,19 @@ async function handleRegister() {
 
 .form-box {
   width: 100%;
+}
+
+.back-home {
+  display: inline-block;
+  font-size: 13px;
+  color: #94a3b8;
+  text-decoration: none;
+  margin-bottom: 20px;
+  transition: color 0.15s;
+}
+
+.back-home:hover {
+  color: #4f46e5;
 }
 
 .form-title {

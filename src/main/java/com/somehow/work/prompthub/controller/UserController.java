@@ -3,9 +3,11 @@ package com.somehow.work.prompthub.controller;
 import cn.dev33.satoken.stp.StpUtil;
 import com.somehow.work.prompthub.dto.LoginDTO;
 import com.somehow.work.prompthub.dto.LoginResultDTO;
+import com.somehow.work.prompthub.dto.RechargeDTO;
 import com.somehow.work.prompthub.dto.RegisterDTO;
 import com.somehow.work.prompthub.service.UserService;
 import com.somehow.work.prompthub.util.Result;
+import com.somehow.work.prompthub.vo.UserProfileVO;
 import com.somehow.work.prompthub.vo.UserVO;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -40,6 +42,21 @@ public class UserController {
     public Result<UserVO> info() {
         long userId = StpUtil.getLoginIdAsLong();
         UserVO vo = userService.currentUser(userId);
+        return Result.ok(vo);
+    }
+
+    /** 充值 */
+    @PostMapping("/recharge")
+    public Result<UserVO> recharge(@Valid @RequestBody RechargeDTO dto) {
+        long userId = StpUtil.getLoginIdAsLong();
+        UserVO vo = userService.recharge(userId, dto.getAmount());
+        return Result.ok("充值成功", vo);
+    }
+
+    /** 用户主页 */
+    @GetMapping("/profile/{id}")
+    public Result<UserProfileVO> profile(@PathVariable Long id) {
+        UserProfileVO vo = userService.profile(id);
         return Result.ok(vo);
     }
 }

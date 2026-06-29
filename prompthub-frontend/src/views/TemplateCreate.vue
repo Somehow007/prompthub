@@ -116,11 +116,15 @@ onMounted(() => {
   <div class="page">
     <header class="header">
       <div class="header-inner">
-        <router-link to="/" class="logo">
-          <div class="logo-mark">P</div>
-          <span class="logo-text">PromptHub</span>
-        </router-link>
-        <span class="page-title">{{ isEdit ? '编辑模板' : '发布模板' }}</span>
+        <div class="header-left">
+          <router-link to="/" class="logo">
+            <div class="logo-mark">P</div>
+            <span class="logo-text">PromptHub</span>
+          </router-link>
+          <span class="page-title">{{ isEdit ? '编辑模板' : '发布模板' }}</span>
+        </div>
+        <router-link v-if="isEdit" :to="`/template/${editId}`" class="back-link">← 返回模板详情</router-link>
+        <router-link v-else to="/" class="back-link">← 返回广场</router-link>
       </div>
     </header>
 
@@ -240,7 +244,24 @@ onMounted(() => {
   padding: 0 24px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
   gap: 24px;
+}
+
+.back-link {
+  font-size: 14px;
+  color: #64748b;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.back-link:hover {
+  color: #4f46e5;
 }
 
 .logo {

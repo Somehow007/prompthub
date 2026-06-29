@@ -40,6 +40,17 @@ const router = createRouter({
       name: 'template-history',
       component: () => import('@/views/TemplateHistory.vue'),
     },
+    {
+      path: '/profile/:id',
+      name: 'profile',
+      component: () => import('@/views/Profile.vue'),
+    },
+    {
+      path: '/favorites',
+      name: 'favorites',
+      component: () => import('@/views/Favorites.vue'),
+      meta: { requiresAuth: true },
+    },
   ],
 })
 

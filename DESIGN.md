@@ -707,6 +707,8 @@ Phase 1 ───► Phase 2 ───► Phase 3 ───► Phase 4 ───
 
 > ✅ Phase 2 完成于 2026-06-28：后端新增 14 个文件（4 个 Entity、4 个 Mapper、3 个 DTO、4 个 VO、2 个 Service、2 个 Controller），前端新增 7 个文件（2 个 API、3 个组件、4 个页面），编译+测试+类型检查+构建全部通过。
 
+> ✅ Phase 3 完成于 2026-06-28：后端新增 15 个文件（5 个 Entity: Order/UsageLog/Review/Favorite/IncomeRecord, 5 个 Mapper, 2 个 DTO: RechargeDTO/CreateReviewDTO, 5 个 VO: OrderVO/ReviewVO/UserProfileVO/IncomeRecordVO, 3 个 Service: OrderService/ReviewService/FavoriteService, 3 个 Controller: OrderController/ReviewController/FavoriteController），更新了 UserMapper（deductBalance）、UserService/Impl（recharge/profile）、TemplateService/Impl（recordUse）、UserController（recharge/profile）、TemplateController（recordUse）。前端新增 5 个文件（3 个 API: order.ts/review.ts/favorite.ts, 1 个组件: RatingStars.vue, 2 个页面: Profile.vue/Favorites.vue），更新了 user.ts（recharge/profile）、template.ts（recordUse）、TemplateDetail.vue（购买/收藏/评价/使用记录）、Home.vue（profile链接/收藏链接）、router（profile/favorites路由）。编译+测试+类型检查+构建全部通过。
+
 ---
 
 ### Phase 3：交易与互动（预计 2 天）

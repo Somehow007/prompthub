@@ -107,4 +107,14 @@ public class TemplateController {
         Page<TemplateVO> result = templateService.search(keyword, page, size);
         return Result.ok(result);
     }
+
+    // ──────────── 使用日志 ────────────
+
+    /** 记录模板使用（需登录） */
+    @PostMapping("/{id}/use")
+    public Result<Void> recordUse(@PathVariable Long id, @RequestParam(required = false) String inputParams) {
+        long userId = StpUtil.getLoginIdAsLong();
+        templateService.recordUse(id, userId, inputParams);
+        return Result.ok("已记录使用", null);
+    }
 }

@@ -19,6 +19,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+
 import java.math.BigDecimal;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -36,6 +38,7 @@ public class TemplateServiceImpl implements TemplateService {
     private final TemplateTagMapper templateTagMapper;
     private final TagMapper tagMapper;
     private final UserMapper userMapper;
+    private final UsageLogMapper usageLogMapper;
 
     // ──────────────────── 创建 ────────────────────
 
@@ -231,18 +234,45 @@ public class TemplateServiceImpl implements TemplateService {
         return getDetail(templateId);
     }
 
+    // ──────────────────── 记录使用 ────────────────────
+
+    @Override
+    @Transactional
+    public void recordUse(Long templateId, Long userId, String inputParams) {
+        Template template = templateMapper.selectById(templateId);
+        if (template == null) {
+            throw new BusinessException("模板不存在");
+        }
+
+        // 记录使用日志
+        UsageLog log = new UsageLog();
+        log.setUserId(userId);
+        log.setTemplateId(templateId);
+        log.setInputParams(inputParams);
+        log.setCreatedAt(LocalDateTime.now());
+        usageLogMapper.insert(log);
+
+        // 更新使用统计
+        template.setUseCount(template.getUseCount() + 1);
+        template.setUseCount7d((template.getUseCount7d() != null ? template.getUseCount7d() : 0) + 1);
+        templateMapper.updateById(template);
+    }
+
     // ──────────────────── 搜索 ────────────────────
 
     @Override
     public Page<TemplateVO> search(String keyword, int page, int size) {
-        // 使用 MyBatis-Plus 分页 + 自定义 SQL
-        Page<Template> pageParam = new Page<>(page, size);
-        // 手动构建分页查询
         long offset = (page - 1) * (long) size;
 
-        List<Template> list = templateMapper.searchByKeyword(keyword);
+        // 优先使用 LIKE 模糊搜索，支持部分关键字匹配
+        List<Template> list = templateMapper.searchByKeywordLike(keyword);
 
-        // 手动分页（简化处理）
+        // 如果 LIKE 没结果，尝试全文索引作为补充
+        if (list.isEmpty() && keyword.length() >= 2) {
+            list = templateMapper.searchByKeyword(keyword);
+        }
+
+        // 手动分页
         int total = list.size();
         int fromIndex = (int) Math.min(offset, total);
         int toIndex = (int) Math.min(offset + size, total);

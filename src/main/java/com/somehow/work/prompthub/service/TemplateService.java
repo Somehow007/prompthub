@@ -44,4 +44,7 @@ public interface TemplateService {
 
     /** 关键字搜索 */
     Page<TemplateVO> search(String keyword, int page, int size);
+
+    /** 记录使用（增加使用计数） */
+    void recordUse(Long templateId, Long userId, String inputParams);
 }

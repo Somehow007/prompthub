@@ -6,14 +6,20 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.somehow.work.prompthub.dto.LoginDTO;
 import com.somehow.work.prompthub.dto.LoginResultDTO;
 import com.somehow.work.prompthub.dto.RegisterDTO;
-import com.somehow.work.prompthub.entity.User;
+import com.somehow.work.prompthub.entity.*;
 import com.somehow.work.prompthub.exception.BusinessException;
-import com.somehow.work.prompthub.mapper.UserMapper;
+import com.somehow.work.prompthub.mapper.*;
 import com.somehow.work.prompthub.service.UserService;
-import com.somehow.work.prompthub.vo.UserVO;
+import com.somehow.work.prompthub.vo.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 用户服务实现
@@ -24,6 +30,11 @@ import org.springframework.stereotype.Service;
 public class UserServiceImpl implements UserService {
 
     private final UserMapper userMapper;
+    private final TemplateMapper templateMapper;
+    private final FavoriteMapper favoriteMapper;
+    private final IncomeRecordMapper incomeRecordMapper;
+    private final TemplateTagMapper templateTagMapper;
+    private final TagMapper tagMapper;
 
     @Override
     public UserVO register(RegisterDTO dto) {
@@ -99,6 +110,141 @@ public class UserServiceImpl implements UserService {
             throw new BusinessException("用户不存在");
         }
         return toVO(user);
+    }
+
+    @Override
+    public UserVO recharge(Long userId, BigDecimal amount) {
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+        user.setBalance(user.getBalance().add(amount));
+        userMapper.updateById(user);
+        log.info("用户充值: userId={}, amount={}", userId, amount);
+        return toVO(user);
+    }
+
+    @Override
+    public UserProfileVO profile(Long userId) {
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+
+        // 该用户发布的模板
+        List<Template> templates = templateMapper.selectList(
+                new LambdaQueryWrapper<Template>().eq(Template::getCreatorId, userId)
+                        .orderByDesc(Template::getCreatedAt));
+
+        long templateCount = templates.size();
+
+        // 总使用次数
+        long totalUseCount = templates.stream()
+                .mapToLong(t -> t.getUseCount() != null ? t.getUseCount() : 0)
+                .sum();
+
+        // 收藏数
+        Long favoriteCount = favoriteMapper.selectCount(
+                new LambdaQueryWrapper<Favorite>().eq(Favorite::getUserId, userId));
+
+        // 总收入
+        List<IncomeRecord> allIncomes = incomeRecordMapper.selectList(
+                new LambdaQueryWrapper<IncomeRecord>().eq(IncomeRecord::getUserId, userId));
+        BigDecimal totalIncome = allIncomes.stream()
+                .map(IncomeRecord::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        // 收入明细（带模板标题）
+        final Map<Long, String> titleMap;
+        if (!templates.isEmpty()) {
+            titleMap = templates.stream()
+                    .collect(Collectors.toMap(Template::getId, Template::getTitle));
+        } else {
+            titleMap = Map.of();
+        }
+        List<IncomeRecordVO> incomeVOs = allIncomes.stream()
+                .map(i -> IncomeRecordVO.builder()
+                        .id(i.getId())
+                        .templateId(i.getTemplateId())
+                        .templateTitle(titleMap.getOrDefault(i.getTemplateId(), ""))
+                        .orderId(i.getOrderId())
+                        .amount(i.getAmount())
+                        .type(i.getType())
+                        .createdAt(i.getCreatedAt())
+                        .build())
+                .collect(Collectors.toList());
+
+        // 最近模板（转 VO）
+        List<TemplateVO> recentTemplates = List.of();
+        if (!templates.isEmpty()) {
+            List<Template> recent = templates.stream().limit(6).toList();
+
+            // 批量查标签
+            Set<Long> tIds = recent.stream().map(Template::getId).collect(Collectors.toSet());
+            List<TemplateTag> allTTs = templateTagMapper.selectList(
+                    new LambdaQueryWrapper<TemplateTag>().in(TemplateTag::getTemplateId, tIds));
+            Map<Long, List<TemplateTag>> ttMap = allTTs.stream()
+                    .collect(Collectors.groupingBy(TemplateTag::getTemplateId));
+            Set<Long> tagIds = allTTs.stream().map(TemplateTag::getTagId).collect(Collectors.toSet());
+            final Map<Long, Tag> tagMap;
+            if (!tagIds.isEmpty()) {
+                tagMap = tagMapper.selectBatchIds(tagIds).stream()
+                        .collect(Collectors.toMap(Tag::getId, t -> t));
+            } else {
+                tagMap = Map.of();
+            }
+
+            recentTemplates = recent.stream()
+                    .map(t -> {
+                        List<TemplateTag> tts = ttMap.getOrDefault(t.getId(), List.of());
+                        List<Long> tIdList = tts.stream().map(TemplateTag::getTagId).toList();
+                        List<String> tNames = tts.stream()
+                                .map(tt -> {
+                                    Tag tag = tagMap.get(tt.getTagId());
+                                    return tag != null ? tag.getName() : "";
+                                })
+                                .filter(n -> !n.isEmpty())
+                                .toList();
+
+                        return TemplateVO.builder()
+                                .id(t.getId())
+                                .creatorId(t.getCreatorId())
+                                .creatorName(user.getUsername())
+                                .creatorAvatar(user.getAvatarUrl())
+                                .title(t.getTitle())
+                                .description(t.getDescription())
+                                .coverUrl(t.getCoverUrl())
+                                .price(t.getPrice())
+                                .status(t.getStatus())
+                                .currentVersion(t.getCurrentVersion())
+                                .useCount(t.getUseCount())
+                                .favoriteCount(t.getFavoriteCount())
+                                .reviewCount(t.getReviewCount())
+                                .avgRating(t.getAvgRating())
+                                .tagIds(tIdList)
+                                .tagNames(tNames)
+                                .createdAt(t.getCreatedAt())
+                                .updatedAt(t.getUpdatedAt())
+                                .build();
+                    })
+                    .collect(Collectors.toList());
+        }
+
+        return UserProfileVO.builder()
+                .id(user.getId())
+                .username(user.getUsername())
+                .email(user.getEmail())
+                .avatarUrl(user.getAvatarUrl())
+                .creatorLevel(user.getCreatorLevel())
+                .balance(user.getBalance())
+                .createdAt(user.getCreatedAt())
+                .templateCount(templateCount)
+                .favoriteCount(favoriteCount)
+                .totalUseCount(totalUseCount)
+                .totalIncome(totalIncome)
+                .recentTemplates(recentTemplates)
+                .incomeRecords(incomeVOs)
+                .build();
     }
 
     /** 实体转 VO */

@@ -43,10 +43,11 @@ public class TemplateController {
         return Result.ok(page);
     }
 
-    /** 模板详情（公开） */
+    /** 模板详情（公开，登录后返回购买状态） */
     @GetMapping("/{id}")
     public Result<TemplateDetailVO> detail(@PathVariable Long id) {
-        TemplateDetailVO vo = templateService.getDetail(id);
+        Long currentUserId = StpUtil.isLogin() ? StpUtil.getLoginIdAsLong() : null;
+        TemplateDetailVO vo = templateService.getDetail(id, currentUserId);
         return Result.ok(vo);
     }
 

@@ -9,6 +9,7 @@ import com.somehow.work.prompthub.dto.RegisterDTO;
 import com.somehow.work.prompthub.entity.*;
 import com.somehow.work.prompthub.exception.BusinessException;
 import com.somehow.work.prompthub.mapper.*;
+import com.somehow.work.prompthub.service.OrderService;
 import com.somehow.work.prompthub.service.UserService;
 import com.somehow.work.prompthub.vo.*;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +36,7 @@ public class UserServiceImpl implements UserService {
     private final IncomeRecordMapper incomeRecordMapper;
     private final TemplateTagMapper templateTagMapper;
     private final TagMapper tagMapper;
+    private final OrderService orderService;
 
     @Override
     public UserVO register(RegisterDTO dto) {
@@ -230,6 +232,78 @@ public class UserServiceImpl implements UserService {
                     .collect(Collectors.toList());
         }
 
+        // 已购模板（转 VO）
+        List<TemplateVO> purchasedTemplates = List.of();
+        List<Long> purchasedIds = orderService.getPurchasedTemplateIds(userId);
+        if (!purchasedIds.isEmpty()) {
+            List<Template> purchasedList = templateMapper.selectBatchIds(purchasedIds);
+            // 过滤 null（可能模板已删除）
+            purchasedList = purchasedList.stream().filter(t -> t != null).toList();
+
+            if (!purchasedList.isEmpty()) {
+                // 批量查创作者
+                Set<Long> pCreatorIds = purchasedList.stream()
+                        .map(Template::getCreatorId).collect(Collectors.toSet());
+                Map<Long, User> creatorMap = Map.of();
+                if (!pCreatorIds.isEmpty()) {
+                    List<User> creators = userMapper.selectBatchIds(pCreatorIds);
+                    creatorMap = creators.stream().collect(Collectors.toMap(User::getId, u -> u));
+                }
+
+                // 批量查标签
+                Set<Long> pTIds = purchasedList.stream().map(Template::getId).collect(Collectors.toSet());
+                List<TemplateTag> pAllTTs = templateTagMapper.selectList(
+                        new LambdaQueryWrapper<TemplateTag>().in(TemplateTag::getTemplateId, pTIds));
+                Map<Long, List<TemplateTag>> pTTMap = pAllTTs.stream()
+                        .collect(Collectors.groupingBy(TemplateTag::getTemplateId));
+                Set<Long> pTagIds = pAllTTs.stream().map(TemplateTag::getTagId).collect(Collectors.toSet());
+                final Map<Long, Tag> pTagMap;
+                if (!pTagIds.isEmpty()) {
+                    pTagMap = tagMapper.selectBatchIds(pTagIds).stream()
+                            .collect(Collectors.toMap(Tag::getId, t -> t));
+                } else {
+                    pTagMap = Map.of();
+                }
+
+                final Map<Long, User> finalCreatorMap = creatorMap;
+                purchasedTemplates = purchasedList.stream()
+                        .map(t -> {
+                            User creator = finalCreatorMap.get(t.getCreatorId());
+                            List<TemplateTag> tts = pTTMap.getOrDefault(t.getId(), List.of());
+                            List<Long> tIdList = tts.stream().map(TemplateTag::getTagId).toList();
+                            List<String> tNames = tts.stream()
+                                    .map(tt -> {
+                                        Tag tag = pTagMap.get(tt.getTagId());
+                                        return tag != null ? tag.getName() : "";
+                                    })
+                                    .filter(n -> !n.isEmpty())
+                                    .toList();
+
+                            return TemplateVO.builder()
+                                    .id(t.getId())
+                                    .creatorId(t.getCreatorId())
+                                    .creatorName(creator != null ? creator.getUsername() : "")
+                                    .creatorAvatar(creator != null ? creator.getAvatarUrl() : null)
+                                    .title(t.getTitle())
+                                    .description(t.getDescription())
+                                    .coverUrl(t.getCoverUrl())
+                                    .price(t.getPrice())
+                                    .status(t.getStatus())
+                                    .currentVersion(t.getCurrentVersion())
+                                    .useCount(t.getUseCount())
+                                    .favoriteCount(t.getFavoriteCount())
+                                    .reviewCount(t.getReviewCount())
+                                    .avgRating(t.getAvgRating())
+                                    .tagIds(tIdList)
+                                    .tagNames(tNames)
+                                    .createdAt(t.getCreatedAt())
+                                    .updatedAt(t.getUpdatedAt())
+                                    .build();
+                        })
+                        .collect(Collectors.toList());
+            }
+        }
+
         return UserProfileVO.builder()
                 .id(user.getId())
                 .username(user.getUsername())
@@ -244,6 +318,7 @@ public class UserServiceImpl implements UserService {
                 .totalIncome(totalIncome)
                 .recentTemplates(recentTemplates)
                 .incomeRecords(incomeVOs)
+                .purchasedTemplates(purchasedTemplates)
                 .build();
     }
 

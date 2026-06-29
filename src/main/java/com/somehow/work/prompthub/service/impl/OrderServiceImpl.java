@@ -147,4 +147,26 @@ public class OrderServiceImpl implements OrderService {
                         .build())
                 .collect(Collectors.toList());
     }
+
+    @Override
+    public boolean isPurchased(Long templateId, Long userId) {
+        Long count = orderMapper.selectCount(
+                new LambdaQueryWrapper<Order>()
+                        .eq(Order::getUserId, userId)
+                        .eq(Order::getTemplateId, templateId)
+                        .eq(Order::getStatus, 1));
+        return count > 0;
+    }
+
+    @Override
+    public List<Long> getPurchasedTemplateIds(Long userId) {
+        List<Order> orders = orderMapper.selectList(
+                new LambdaQueryWrapper<Order>()
+                        .eq(Order::getUserId, userId)
+                        .eq(Order::getStatus, 1));
+        return orders.stream()
+                .map(Order::getTemplateId)
+                .distinct()
+                .collect(Collectors.toList());
+    }
 }

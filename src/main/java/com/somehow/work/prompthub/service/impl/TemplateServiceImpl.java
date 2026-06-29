@@ -9,6 +9,7 @@ import com.somehow.work.prompthub.dto.TemplateUpdateDTO;
 import com.somehow.work.prompthub.entity.*;
 import com.somehow.work.prompthub.exception.BusinessException;
 import com.somehow.work.prompthub.mapper.*;
+import com.somehow.work.prompthub.service.OrderService;
 import com.somehow.work.prompthub.service.TemplateService;
 import com.somehow.work.prompthub.vo.TagVO;
 import com.somehow.work.prompthub.vo.TemplateDetailVO;
@@ -39,6 +40,7 @@ public class TemplateServiceImpl implements TemplateService {
     private final TagMapper tagMapper;
     private final UserMapper userMapper;
     private final UsageLogMapper usageLogMapper;
+    private final OrderService orderService;
 
     // ──────────────────── 创建 ────────────────────
 
@@ -70,7 +72,7 @@ public class TemplateServiceImpl implements TemplateService {
         }
 
         log.info("模板创建成功: id={}, title={}", template.getId(), template.getTitle());
-        return getDetail(template.getId());
+        return getDetail(template.getId(), userId);
     }
 
     // ──────────────────── 列表查询 ────────────────────
@@ -119,13 +121,28 @@ public class TemplateServiceImpl implements TemplateService {
     // ──────────────────── 详情 ────────────────────
 
     @Override
-    public TemplateDetailVO getDetail(Long id) {
+    public TemplateDetailVO getDetail(Long id, Long currentUserId) {
         Template template = templateMapper.selectById(id);
         if (template == null) {
             throw new BusinessException("模板不存在");
         }
 
-        return toDetailVO(template);
+        TemplateDetailVO vo = toDetailVO(template);
+
+        // 付费模板访问控制：非创作者需检查是否已购买
+        if (template.getPrice().compareTo(java.math.BigDecimal.ZERO) > 0) {
+            boolean isCreator = currentUserId != null && currentUserId.equals(template.getCreatorId());
+            boolean purchased = currentUserId != null && orderService.isPurchased(id, currentUserId);
+            vo.setHasPurchased(isCreator || purchased);
+            if (!isCreator && !purchased) {
+                vo.setPromptContent(""); // 未购买，隐藏 Prompt 内容
+            }
+        } else {
+            // 免费模板，所有人可查看
+            vo.setHasPurchased(true);
+        }
+
+        return vo;
     }
 
     // ──────────────────── 编辑（生成新版本） ────────────────────
@@ -163,7 +180,7 @@ public class TemplateServiceImpl implements TemplateService {
         }
 
         log.info("模板编辑成功: id={}, newVersion={}", id, template.getCurrentVersion());
-        return getDetail(id);
+        return getDetail(id, userId);
     }
 
     // ──────────────────── 上下架 ────────────────────
@@ -231,7 +248,7 @@ public class TemplateServiceImpl implements TemplateService {
         versionMapper.insert(newVersion);
 
         log.info("模板回滚成功: id={}, from=v{}, to=v{}", templateId, targetVersion.getVersionNumber(), newVersionNum);
-        return getDetail(templateId);
+        return getDetail(templateId, userId);
     }
 
     // ──────────────────── 记录使用 ────────────────────
@@ -242,6 +259,13 @@ public class TemplateServiceImpl implements TemplateService {
         Template template = templateMapper.selectById(templateId);
         if (template == null) {
             throw new BusinessException("模板不存在");
+        }
+
+        // 付费模板：非创作者必须已购买才能使用
+        if (template.getPrice().compareTo(java.math.BigDecimal.ZERO) > 0
+                && !template.getCreatorId().equals(userId)
+                && !orderService.isPurchased(templateId, userId)) {
+            throw new BusinessException("请先购买此模板");
         }
 
         // 记录使用日志

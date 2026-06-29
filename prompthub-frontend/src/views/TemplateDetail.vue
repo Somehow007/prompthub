@@ -16,6 +16,9 @@ const userStore = useUserStore()
 const template = ref<TemplateDetailVO | null>(null)
 const loading = ref(true)
 
+// 购买状态
+const hasPurchased = ref(false)
+
 // 收藏
 const favorited = ref(false)
 
@@ -119,9 +122,13 @@ async function doPurchase() {
   purchasing.value = true
   try {
     await purchaseTemplate(template.value!.id)
-    ElMessage.success(template.value!.price === 0 ? '已获取模板' : '购买成功')
+    // 重新加载模板详情以获取完整的 Prompt 内容
+    const updated = await getTemplateDetail(template.value!.id)
+    template.value = updated
+    hasPurchased.value = updated.hasPurchased
+    ElMessage.success(updated.price === 0 ? '已获取模板' : '购买成功')
     // 刷新用户余额
-    if (userStore.userInfo && template.value!.price > 0) {
+    if (userStore.userInfo && updated.price > 0) {
       await userStore.fetchUserInfo()
     }
   } catch (e: any) {
@@ -233,6 +240,7 @@ onMounted(async () => {
   const id = Number(route.params.id)
   try {
     template.value = await getTemplateDetail(id)
+    hasPurchased.value = template.value.hasPurchased
     await Promise.all([loadFavoriteStatus(), loadReviews()])
   } catch {
     ElMessage.error('模板加载失败')
@@ -297,8 +305,22 @@ onMounted(async () => {
               Prompt 内容
               <span class="version-badge">v{{ template.currentVersion }}</span>
             </h2>
-            <div class="prompt-box">
+            <!-- 已购买 / 免费 / 创作者本人：显示完整内容 -->
+            <div v-if="template.price === 0 || isOwner() || hasPurchased" class="prompt-box">
               <pre class="prompt-text">{{ template.promptContent }}</pre>
+            </div>
+            <!-- 未购买付费模板：锁定提示 -->
+            <div v-else class="prompt-locked">
+              <div class="locked-icon">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+              </div>
+              <p class="locked-text">购买后查看 Prompt 内容</p>
+              <el-button type="primary" :loading="purchasing" @click="handlePurchase">
+                立即购买 ¥{{ template.price.toFixed(2) }}
+              </el-button>
             </div>
           </div>
 
@@ -318,20 +340,50 @@ onMounted(async () => {
 
             <!-- 非创作者操作 -->
             <template v-else-if="isLoggedIn()">
-              <el-button
-                type="primary"
-                :loading="purchasing"
-                @click="handlePurchase"
-              >
-                {{ template.price === 0 ? '免费获取' : `购买 ¥${template.price.toFixed(2)}` }}
-              </el-button>
-              <el-button @click="handleUseTemplate">记录使用</el-button>
-              <el-button
-                :type="favorited ? 'warning' : 'default'"
-                @click="handleToggleFavorite"
-              >
-                {{ favorited ? '★ 已收藏' : '☆ 收藏' }}
-              </el-button>
+              <!-- 已购买付费模板 -->
+              <template v-if="hasPurchased && template.price > 0">
+                <el-button type="success" disabled>✓ 已购买</el-button>
+                <el-button @click="handleUseTemplate">记录使用</el-button>
+                <el-button
+                  :type="favorited ? 'warning' : 'default'"
+                  @click="handleToggleFavorite"
+                >
+                  {{ favorited ? '★ 已收藏' : '☆ 收藏' }}
+                </el-button>
+              </template>
+              <!-- 已获取免费模板 -->
+              <template v-else-if="hasPurchased && template.price === 0">
+                <el-button type="success" disabled>✓ 已获取</el-button>
+                <el-button @click="handleUseTemplate">记录使用</el-button>
+                <el-button
+                  :type="favorited ? 'warning' : 'default'"
+                  @click="handleToggleFavorite"
+                >
+                  {{ favorited ? '★ 已收藏' : '☆ 收藏' }}
+                </el-button>
+              </template>
+              <!-- 未购买/未获取 -->
+              <template v-else>
+                <el-button
+                  type="primary"
+                  :loading="purchasing"
+                  @click="handlePurchase"
+                >
+                  {{ template.price === 0 ? '免费获取' : `购买 ¥${template.price.toFixed(2)}` }}
+                </el-button>
+                <el-button
+                  v-if="template.price === 0"
+                  @click="handleUseTemplate"
+                >
+                  记录使用
+                </el-button>
+                <el-button
+                  :type="favorited ? 'warning' : 'default'"
+                  @click="handleToggleFavorite"
+                >
+                  {{ favorited ? '★ 已收藏' : '☆ 收藏' }}
+                </el-button>
+              </template>
             </template>
 
             <!-- 未登录 -->
@@ -676,6 +728,29 @@ onMounted(async () => {
   word-break: break-word;
   margin: 0;
   font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+}
+
+/* 未购买锁定状态 */
+.prompt-locked {
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 2px dashed #e2e8f0;
+  padding: 48px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+}
+
+.locked-icon {
+  opacity: 0.5;
+}
+
+.locked-text {
+  font-size: 15px;
+  color: #64748b;
+  margin: 0;
 }
 
 .change-note {

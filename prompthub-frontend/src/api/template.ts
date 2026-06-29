@@ -75,6 +75,7 @@ export interface TemplateDetailVO {
   reviewCount: number
   avgRating: number
   tags: TagVO[]
+  hasPurchased: boolean
   createdAt: string
   updatedAt: string
 }

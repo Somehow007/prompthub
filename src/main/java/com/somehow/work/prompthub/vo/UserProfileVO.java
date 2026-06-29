@@ -34,4 +34,7 @@ public class UserProfileVO {
 
     // 收入明细
     private List<IncomeRecordVO> incomeRecords;
+
+    // 已购模板
+    private List<TemplateVO> purchasedTemplates;
 }

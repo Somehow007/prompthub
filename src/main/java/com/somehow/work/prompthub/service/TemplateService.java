@@ -21,8 +21,8 @@ public interface TemplateService {
     /** 分页查询模板列表 */
     Page<TemplateVO> query(TemplateQueryDTO query);
 
-    /** 模板详情（含当前版本 Prompt 和标签） */
-    TemplateDetailVO getDetail(Long id);
+    /** 模板详情（含当前版本 Prompt 和标签）。currentUserId 可为 null（未登录） */
+    TemplateDetailVO getDetail(Long id, Long currentUserId);
 
     /** 编辑模板（自动生成新版本） */
     TemplateDetailVO update(Long id, TemplateUpdateDTO dto, Long userId);

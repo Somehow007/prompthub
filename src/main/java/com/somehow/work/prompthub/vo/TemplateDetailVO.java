@@ -40,6 +40,9 @@ public class TemplateDetailVO {
     /** 标签列表 */
     private List<TagVO> tags;
 
+    /** 当前用户是否已购买（未登录或未购买为 false） */
+    private Boolean hasPurchased;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

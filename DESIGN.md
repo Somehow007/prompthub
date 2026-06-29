@@ -15,6 +15,7 @@
 7. [并发控制方案](#7-并发控制方案)
 8. [查询优化方案](#8-查询优化方案)
 9. [测试策略](#9-测试策略)
+10. [Bug 修复记录](#10-bug-修复记录)
 
 ---
 
@@ -134,13 +135,14 @@ src/main/java/com/somehow/work/prompthub/
 │   ├── RedisConfig.java               # Redis 序列化配置
 │   └── WebMvcConfig.java              # CORS 跨域配置
 ├── controller/                         # 控制器层
-│   ├── UserController.java
-│   ├── TemplateController.java
-│   ├── OrderController.java
-│   ├── TagController.java
-│   ├── ReviewController.java
-│   ├── ActivityController.java
-│   └── StatisticsController.java
+│   ├── UserController.java             # 用户注册/登录/信息/充值/主页
+│   ├── TemplateController.java         # 模板CRUD/版本/搜索/使用记录
+│   ├── OrderController.java            # 购买/订单列表
+│   ├── TagController.java              # 标签树查询
+│   ├── ReviewController.java           # 评价创建/列表/删除
+│   ├── FavoriteController.java         # 收藏toggle/列表/检查
+│   ├── ActivityController.java         # 限时活动（Phase 5）
+│   └── StatisticsController.java       # 数据统计（Phase 4）
 ├── service/                            # 业务逻辑层
 │   ├── UserService.java
 │   ├── TemplateService.java
@@ -186,26 +188,29 @@ prompthub-frontend/
 │   │   └── template.ts                 # 模板状态
 │   ├── api/                            # API 请求封装
 │   │   ├── request.ts                  # Axios 实例 + 拦截器
-│   │   ├── user.ts
-│   │   ├── template.ts
-│   │   ├── order.ts
-│   │   └── ...
+│   │   ├── user.ts                     # 用户注册/登录/信息/充值/主页
+│   │   ├── template.ts                 # 模板CRUD/版本/搜索/使用记录
+│   │   ├── tag.ts                      # 标签树查询
+│   │   ├── order.ts                    # 购买/订单列表
+│   │   ├── review.ts                   # 评价创建/列表/删除
+│   │   ├── favorite.ts                # 收藏toggle/列表/检查
+│   │   └── statistics.ts              # 数据统计（Phase 4）
 │   ├── views/                          # 页面组件
 │   │   ├── Home.vue                    # 首页/模板广场
 │   │   ├── Login.vue                   # 登录
 │   │   ├── Register.vue                # 注册
-│   │   ├── Profile.vue                 # 个人主页
-│   │   ├── TemplateDetail.vue          # 模板详情
-│   │   ├── TemplateCreate.vue          # 创建模板
+│   │   ├── Profile.vue                 # 个人主页（模板/收藏/订单/已购/收入）
+│   │   ├── Favorites.vue               # 我的收藏页
+│   │   ├── TemplateDetail.vue          # 模板详情（含购买/收藏/评价/使用）
+│   │   ├── TemplateCreate.vue          # 创建/编辑模板
 │   │   ├── TemplateHistory.vue         # 版本历史
-│   │   ├── Dashboard.vue               # 数据看板
-│   │   └── Activity.vue                # 限时活动
+│   │   ├── Dashboard.vue               # 数据看板（Phase 4）
+│   │   └── Activity.vue                # 限时活动（Phase 5）
 │   ├── components/                     # 公共组件
-│   │   ├── TemplateCard.vue
-│   │   ├── TagSelector.vue
-│   │   ├── SearchBar.vue
-│   │   ├── RatingStars.vue
-│   │   └── ...
+│   │   ├── TemplateCard.vue            # 模板卡片
+│   │   ├── TagSelector.vue             # 标签选择器
+│   │   ├── RatingStars.vue             # 星级评分组件
+│   │   └── AppLayout.vue               # 全局布局
 │   └── utils/                          # 工具函数
 │       └── index.ts
 ```
@@ -294,6 +299,8 @@ prompthub-frontend/
    │     status                       │
    └──────────────────────────────────┘
 ```
+
+> 更新于 2026-06-29：Phase 3 新增 Favorite（收藏）、IncomeRecord（收入明细）两个实体未在 E-R 图中绘制。Favorite 为 User-Template 多对多关联表；IncomeRecord 与 Order 为 1:1 关系，记录创作者销售收入。完整表结构见 4.2 节 DDL。
 
 ### 4.2 逻辑模型（表结构设计）
 
@@ -584,7 +591,7 @@ CREATE TABLE `income_record` (
 
 ### 5.2 核心业务流程
 
-#### 5.2.1 购买模板流程（事务保证）
+#### 5.2.1 购买模板流程（事务保证 + 访问控制）
 
 ```
 用户发起购买
@@ -602,12 +609,32 @@ CREATE TABLE `income_record` (
 │  4. 扣减用户余额              │
 │  5. 生成订单记录              │
 │  6. 记录创作者收入            │
-│  7. 更新模板销售统计          │
+│  7. 更新模板使用统计          │
 └──────────┬──────────────────┘
            │ 成功
            ▼
         返回订单信息
+           │
+           ▼
+┌─────────────────────────────┐
+│  访问控制（查看/使用校验）      │
+│  - getDetail()：未购买 →      │
+│    隐藏 promptContent，       │
+│    返回 hasPurchased=false   │
+│  - recordUse()：未购买 →      │
+│    抛出 "请先购买此模板"       │
+│  - 创作者本人无需购买即可访问   │
+│  - 免费模板无访问限制          │
+└─────────────────────────────┘
 ```
+
+**访问控制规则**：
+
+| 角色 | 免费模板 | 付费模板（未购买） | 付费模板（已购买） |
+|------|----------|-------------------|-------------------|
+| 匿名用户 | 可查看 Prompt | ❌ Prompt 隐藏 | — |
+| 登录用户（非创作者） | 可查看 Prompt | ❌ Prompt 隐藏，显示购买 CTA | ✅ 完整内容 + 记录使用 |
+| 创作者本人 | 可查看 Prompt | ✅ 完整内容（无需购买） | ✅ 完整内容 |
 
 #### 5.2.2 版本管理流程
 
@@ -707,7 +734,11 @@ Phase 1 ───► Phase 2 ───► Phase 3 ───► Phase 4 ───
 
 > ✅ Phase 2 完成于 2026-06-28：后端新增 14 个文件（4 个 Entity、4 个 Mapper、3 个 DTO、4 个 VO、2 个 Service、2 个 Controller），前端新增 7 个文件（2 个 API、3 个组件、4 个页面），编译+测试+类型检查+构建全部通过。
 
-> ✅ Phase 3 完成于 2026-06-28：后端新增 15 个文件（5 个 Entity: Order/UsageLog/Review/Favorite/IncomeRecord, 5 个 Mapper, 2 个 DTO: RechargeDTO/CreateReviewDTO, 5 个 VO: OrderVO/ReviewVO/UserProfileVO/IncomeRecordVO, 3 个 Service: OrderService/ReviewService/FavoriteService, 3 个 Controller: OrderController/ReviewController/FavoriteController），更新了 UserMapper（deductBalance）、UserService/Impl（recharge/profile）、TemplateService/Impl（recordUse）、UserController（recharge/profile）、TemplateController（recordUse）。前端新增 5 个文件（3 个 API: order.ts/review.ts/favorite.ts, 1 个组件: RatingStars.vue, 2 个页面: Profile.vue/Favorites.vue），更新了 user.ts（recharge/profile）、template.ts（recordUse）、TemplateDetail.vue（购买/收藏/评价/使用记录）、Home.vue（profile链接/收藏链接）、router（profile/favorites路由）。编译+测试+类型检查+构建全部通过。
+> ✅ Phase 3 完成于 2026-06-28，Bug 修复于 2026-06-29。
+>
+> **初始实现**（06-28）：后端新增 15 个文件（5 个 Entity: Order/UsageLog/Review/Favorite/IncomeRecord, 5 个 Mapper, 2 个 DTO: RechargeDTO/CreateReviewDTO, 5 个 VO: OrderVO/ReviewVO/UserProfileVO/IncomeRecordVO, 3 个 Service: OrderService/ReviewService/FavoriteService, 3 个 Controller: OrderController/ReviewController/FavoriteController），更新了 UserMapper（deductBalance）、UserService/Impl（recharge/profile）、TemplateService/Impl（recordUse）、UserController（recharge/profile）、TemplateController（recordUse）。前端新增 5 个文件（3 个 API: order.ts/review.ts/favorite.ts, 1 个组件: RatingStars.vue, 2 个页面: Profile.vue/Favorites.vue）。
+>
+> **访问控制修复**（06-29）：修复了付费模板无需购买即可查看/使用的严重安全漏洞。OrderService 新增 `isPurchased()` 和 `getPurchasedTemplateIds()`；TemplateDetailVO 新增 `hasPurchased` 字段；`getDetail()` 对未购买的付费模板隐藏 Prompt 内容；`recordUse()` 增加购买校验。UserProfileVO 新增 `purchasedTemplates`，个人主页新增"已购模板"Tab。前端 TemplateDetail.vue 增加内容门控（锁定界面+购买CTA）和购买状态追踪（✓已购买/✓已获取按钮）。编译+测试+类型检查+构建全部通过。
 
 ---
 
@@ -731,35 +762,40 @@ Phase 1 ───► Phase 2 ───► Phase 3 ───► Phase 4 ───
 
 ---
 
-### Phase 4：数据统计（预计 2 天）
+### Phase 4：数据统计与看板（预计 2 天）
 
-> **目标**：完成数据看板、热门排行、使用趋势图、平台总览
+> **目标**：完成数据看板、热门排行、使用趋势图、平台总览。个人主页已有基础统计（模板数/收藏/使用次数/收入/已购模板），Phase 4 专注于**聚合分析**和**图表可视化**。
+
+> 更新于 2026-06-29：Phase 3 个人主页已涵盖部分统计数据（templateCount, favoriteCount, totalUseCount, totalIncome），Phase 4 聚焦排行榜、趋势图、平台总览和创作者等级存储过程。
 
 | # | 任务 | 内容 | 后端 | 前端 | 测试验收标准 |
 |---|------|------|------|------|-------------|
-| 4.1 | 热门排行 | 综合评分×使用量×收藏数计算热度分、Top N 查询 | ✅ | ✅ | 排行榜展示正确，热度分公式合理 |
+| 4.1 | 热门排行 | 综合评分×使用量×收藏数计算热度分、Top N 查询、首页排行组件 | ✅ | ✅ | 排行榜展示正确，热度分公式合理 |
 | 4.2 | 使用趋势 | 指定模板近30天每日使用频次 SQL、ECharts 折线图 | ✅ | ✅ | 折线图数据与 usage_log 统计一致 |
-| 4.3 | 创作者看板 | 模板使用趋势、收入统计（按月/按模板）、ECharts 图表 | ✅ | ✅ | 创作者登录后能看到自己模板的数据 |
-| 4.4 | 平台总览 | 总用户数、总模板数、总交易额、日活用户数 | ✅ | ✅ | 管理端或首页展示平台总览数据 |
-| 4.5 | 创作者等级 | 根据被使用次数和评分自动计算等级的存储过程 | ✅ | — | 存储过程执行后等级正确更新 |
+| 4.3 | 创作者看板 | 集成到个人主页：收入趋势（按月）、模板使用趋势、ECharts 图表 | ✅ | ✅ | 创作者登录后能看到自己模板的可视化数据 |
+| 4.4 | 平台总览 | 总用户数、总模板数、总交易额、新增用户趋势（Dashboard 页面） | ✅ | ✅ | 首页/Dashboard 展示平台总览数据 |
+| 4.5 | 创作者等级 | 根据被使用次数和评分自动计算等级的 MySQL 存储过程 + 定时调用 | ✅ | — | 存储过程执行后等级正确更新 |
 
 **Phase 4 交付物**：
-- 创作者数据看板（折线图+收入统计）
-- 平台首页热门排行
+- 数据看板页面（Dashboard.vue + ECharts）
+- 首页热门排行组件
 - 平台总览统计数据
 - 创作者等级自动更新存储过程
+- 个人主页已有的统计数据作为基础，Phase 4 增加趋势图和排行
 
 ---
 
 ### Phase 5：拓展创新功能（预计 2 天）
 
-> **目标**：限时活动、智能推荐、系统打磨
+> **目标**：限时活动、智能推荐、系统打磨。前期已完成大部分打磨工作（返回导航、加载状态、错误处理、响应式适配），Phase 5 聚焦创新功能和最终交付物。
+
+> 更新于 2026-06-29：前期已完成：所有页面返回导航（TemplateCreate/Login/Register）、ElMessage 错误提示、loading 状态、响应式 CSS、模糊搜索（LIKE）、评价时间修复、删除评价功能。Phase 5 专注于活动和推荐。
 
 | # | 任务 | 内容 | 后端 | 前端 | 测试验收标准 |
 |---|------|------|------|------|-------------|
 | 5.1 | 限时免费活动 | 创建活动、领取（Redis 分布式锁）、剩余份数管理、活动状态自动变更 | ✅ | ✅ | 并发领取不超过限量，活动到期自动结束 |
 | 5.2 | 简易推荐 | 基于标签相似度推荐（协同过滤思想）：用户常用标签 → 推荐同类高分模板 | ✅ | ✅ | 推荐结果与用户历史使用标签相关 |
-| 5.3 | 全局打磨 | 分页统一处理、加载状态、错误提示、响应式适配、代码清理 | ✅ | ✅ | 前后端编译/build均无错误 |
+| 5.3 | 系统打磨 | 代码清理、前后端编译/build均无错误、响应式最终检查、文案统一 | ✅ | ✅ | 前后端零错误零警告 |
 | 5.4 | 并发测试 | 模拟并发购买、并发领取活动的数据一致性测试 | ✅ | — | 并发场景下事务/分布式锁正确，数据无异常 |
 
 **Phase 5 交付物**：
@@ -806,23 +842,27 @@ GET    /api/templates/search?keyword=xxx    # 关键字搜索
 #### Phase 3 API
 ```
 # 订单
-POST   /api/orders               # 购买模板
+POST   /api/orders               # 购买模板（事务：扣款→订单→收入→统计）
 GET    /api/orders               # 我的订单列表
 
+# 模板详情（含购买状态）
+GET    /api/templates/{id}       # 返回 hasPurchased 字段；未购付费模板隐藏 promptContent
+
 # 使用日志
-POST   /api/templates/{id}/use   # 记录使用
+POST   /api/templates/{id}/use   # 记录使用（付费模板需先购买，否则 400）
 
 # 评价
 POST   /api/reviews              # 评分评价
 GET    /api/templates/{id}/reviews # 模板评价列表
+DELETE /api/reviews/{id}         # 删除自己的评价
 
 # 收藏
-POST   /api/favorites/{templateId}    # 收藏
-DELETE  /api/favorites/{templateId}   # 取消收藏
+POST   /api/favorites/{templateId}    # 收藏/取消收藏（toggle）
+GET    /api/favorites/check/{id}      # 检查收藏状态
 GET    /api/favorites                 # 我的收藏
 
 # 用户
-GET    /api/user/profile/{id}    # 用户主页
+GET    /api/user/profile/{id}    # 用户主页（含 purchasedTemplates 已购列表）
 POST   /api/user/recharge        # 充值
 ```
 
@@ -991,11 +1031,49 @@ DELIMITER ;
 
 | 场景 | 预期结果 |
 |------|----------|
+| 匿名用户查看付费模板详情 | promptContent 为空，hasPurchased=false，显示购买 CTA |
+| 未购买用户查看付费模板 | promptContent 隐藏，显示锁定界面+购买按钮，"记录使用"不可见 |
+| 购买后查看付费模板 | promptContent 完整显示，按钮变为"✓ 已购买"，"记录使用"可用 |
+| 创作者查看自己的付费模板 | 完整内容，无需购买，hasPurchased=true |
+| 未购买用户调用 recordUse API | 返回 400 "请先购买此模板" |
 | 同时购买同一模板（并发） | 只有一个成功，其余提示"已购买"，余额只扣一次 |
 | 活动限量 100 份，200 人并发领取 | 恰好 100 人成功，Redis 库存不超扣 |
 | 编辑模板后查看历史版本 | 版本号递增，历史版本内容可查 |
 | 回滚到 v2 | 当前版本变为新版本号，内容与 v2 一致 |
 | 评分后查模板详情 | avg_rating 自动更新为正确均值 |
+
+---
+
+## 10. Bug 修复记录
+
+> 本节记录开发过程中发现的关键 Bug 及修复方案，作为经验积累和后续开发参考。
+
+| # | 发现日期 | 问题 | 严重程度 | 根因 | 修复方案 |
+|---|----------|------|----------|------|----------|
+| 1 | 06-29 | 评价时间显示错误 | 中 | MyBatis-Plus INSERT 后未回填 `createdAt`（DB 有 DEFAULT 但 MP 未自动查询） | `review.setCreatedAt(LocalDateTime.now())` 显式设置 |
+| 2 | 06-29 | 无法删除自己的评价 | 中 | 前端未对接删除评价 API | TemplateDetail 增加删除按钮 + `deleteReview()` 调用 |
+| 3 | 06-29 | 搜索不支持模糊匹配 | 高 | FULLTEXT `MATCH...AGAINST` 不支持部分关键字 | 新增 LIKE `%keyword%` 模糊搜索为主要策略，FULLTEXT 为补充 |
+| 4 | 06-29 | "记录使用"点击后无反馈 | 中 | 仅 toast 提示，无后续交互 | 增加使用弹窗（显示 Prompt + 复制按钮） |
+| 5 | 06-29 | 多页面缺少返回导航 | 低 | TemplateCreate/Login/Register 无返回链接 | 添加上下文感知的返回导航链接 |
+| 6 | 06-29 | **付费模板无需购买即可查看/使用** | 🔴 严重 | `getDetail()` 和 `recordUse()` 无访问控制检查 | 详见下方 10.1 节 |
+
+### 10.1 付费内容访问控制修复（Bug #6 详细）
+
+**问题**：付费模板的 Prompt 内容对所有用户可见，"记录使用"功能无需购买即可调用，购买系统完全形同虚设。
+
+**根因**：
+- `TemplateServiceImpl.getDetail()` 无条件返回完整 `promptContent`
+- `TemplateServiceImpl.recordUse()` 未校验用户是否已购买
+- 前端无购买状态追踪，购买按钮购买后仍显示
+
+**修复**：
+- `TemplateDetailVO` 新增 `hasPurchased` 字段
+- `getDetail(id, currentUserId)` 对未购买的付费模板清空 `promptContent`
+- `recordUse()` 对未购买的付费模板抛出 `BusinessException`
+- 前端 TemplateDetail 增加内容门控（锁定界面 + 购买 CTA）、购买状态按钮切换、购买后重新加载详情
+- 个人主页新增"已购模板"Tab
+
+**涉及文件**（8 个后端 + 4 个前端）：详见 Phase 3 访问控制修复记录。
 
 ---
 
@@ -1021,7 +1099,8 @@ prompthub/                              # 后端项目根目录
 │   │   └── resources/
 │   │       ├── application.yaml
 │   │       └── db/
-│   │           └── schema.sql          # 完整建表 DDL
+│   │           ├── schema.sql          # 完整建表 DDL
+│   │           └── seed.sql            # 测试种子数据
 │   └── test/java/
 │
 └── DESIGN.md                           # 本文档
@@ -1043,4 +1122,6 @@ prompthub-frontend/                        # 前端项目根目录
 
 ---
 
-> **下一步**：请您审查以上设计文档，确认后我将按 Phase 1 → Phase 5 的顺序逐步实现，每个阶段完成后进行验证测试，测试通过再进入下一阶段。
+> **当前进度**：Phase 1 ✅ → Phase 2 ✅ → Phase 3 ✅（含访问控制修复）→ **Phase 4 待开始**。
+>
+> 已验证：后端 62 个源文件编译通过 + 1 个测试通过，前端 1694 个模块构建成功。数据库 11 张表 + 种子数据就位。

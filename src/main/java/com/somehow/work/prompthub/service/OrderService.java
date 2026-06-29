@@ -14,4 +14,10 @@ public interface OrderService {
 
     /** 我的订单列表 */
     List<OrderVO> listOrders(Long userId);
+
+    /** 检查用户是否已购买某模板 */
+    boolean isPurchased(Long templateId, Long userId);
+
+    /** 获取用户已购买的所有模板ID */
+    List<Long> getPurchasedTemplateIds(Long userId);
 }

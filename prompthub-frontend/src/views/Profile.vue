@@ -218,6 +218,13 @@ onMounted(() => {
           订单记录
         </button>
         <button
+          v-if="isSelf"
+          :class="['tab-btn', { active: activeTab === 'purchased' }]"
+          @click="handleTabChange('purchased')"
+        >
+          已购模板
+        </button>
+        <button
           :class="['tab-btn', { active: activeTab === 'income' }]"
           @click="handleTabChange('income')"
         >
@@ -283,6 +290,22 @@ onMounted(() => {
         </div>
         <div v-else class="empty-tab">
           <p>还没有任何订单</p>
+        </div>
+      </div>
+
+      <!-- Tab: 已购模板（仅本人） -->
+      <div v-if="activeTab === 'purchased' && isSelf" class="tab-content">
+        <div v-if="profile.purchasedTemplates?.length > 0" class="template-grid">
+          <TemplateCard
+            v-for="t in profile.purchasedTemplates"
+            :key="t.id"
+            :template="t"
+            @click="goToDetail"
+          />
+        </div>
+        <div v-else class="empty-tab">
+          <p>还没有购买任何模板</p>
+          <router-link to="/" class="create-link">去广场逛逛</router-link>
         </div>
       </div>
 

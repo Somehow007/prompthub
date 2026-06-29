@@ -54,6 +54,7 @@ export interface UserProfileVO {
   totalIncome: number
   recentTemplates: TemplateVO[]
   incomeRecords: IncomeRecordVO[]
+  purchasedTemplates: TemplateVO[]
 }
 
 /** 登录 */

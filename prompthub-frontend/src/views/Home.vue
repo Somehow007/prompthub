@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, watch } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import { getTemplates, searchTemplates, type TemplateVO, type TemplateQueryDTO } from '@/api/template'
+import { getTemplates, type TemplateVO, type TemplateQueryDTO } from '@/api/template'
 import { getTags, type TagVO } from '@/api/tag'
+import { getHotRanking, type HotTemplateVO } from '@/api/statistics'
 import SearchBar from '@/components/SearchBar.vue'
 import TagSelector from '@/components/TagSelector.vue'
 import TemplateCard from '@/components/TemplateCard.vue'
@@ -34,6 +35,17 @@ const sortOptions = [
   { label: '价格从低到高', value: 'price_asc' },
   { label: '价格从高到低', value: 'price_desc' },
 ]
+
+// 热门排行
+const ranking = ref<HotTemplateVO[]>([])
+
+async function loadRanking() {
+  try {
+    ranking.value = await getHotRanking(10)
+  } catch {
+    // ignore
+  }
+}
 
 // 加载标签
 async function loadTags() {
@@ -109,6 +121,7 @@ function handleLogout() {
 onMounted(() => {
   loadTags()
   loadTemplates()
+  loadRanking()
 })
 </script>
 
@@ -185,6 +198,28 @@ onMounted(() => {
             >
               付费
             </button>
+          </div>
+
+          <!-- 热门排行 -->
+          <div v-if="ranking.length > 0" class="sidebar-title" style="margin-top: 28px">🔥 热门排行</div>
+          <div v-if="ranking.length > 0" class="ranking-sidebar">
+            <div
+              v-for="(item, idx) in ranking"
+              :key="item.templateId"
+              class="ranking-side-item"
+            >
+              <span :class="['rank-num', { gold: idx === 0, silver: idx === 1, bronze: idx === 2 }]">
+                {{ idx + 1 }}
+              </span>
+              <div class="rank-content">
+                <router-link :to="`/template/${item.templateId}`" class="rank-title">
+                  {{ item.title }}
+                </router-link>
+                <span class="rank-meta">{{ item.creatorName }}</span>
+              </div>
+              <span class="rank-score-badge">{{ item.hotScore.toFixed(1) }}</span>
+            </div>
+            <router-link to="/dashboard" class="rank-view-all">查看完整排行 →</router-link>
           </div>
         </aside>
 
@@ -417,6 +452,88 @@ onMounted(() => {
   background: #4f46e5;
   color: #fff;
   border-color: #4f46e5;
+}
+
+/* 热门排行侧栏 */
+.ranking-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ranking-side-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.rank-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  background: #f1f5f9;
+  flex-shrink: 0;
+}
+
+.rank-num.gold { background: #fef3c7; color: #d97706; }
+.rank-num.silver { background: #f1f5f9; color: #64748b; }
+.rank-num.bronze { background: #fed7aa; color: #c2410c; }
+
+.rank-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.rank-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: #1e293b;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+
+.rank-title:hover {
+  color: #4f46e5;
+}
+
+.rank-meta {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.rank-score-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: #4f46e5;
+  flex-shrink: 0;
+}
+
+.rank-view-all {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  color: #4f46e5;
+  text-decoration: none;
+  text-align: center;
+  padding: 6px 0;
+  border-top: 1px solid #f1f5f9;
+}
+
+.rank-view-all:hover {
+  text-decoration: underline;
 }
 
 /* 主内容 */

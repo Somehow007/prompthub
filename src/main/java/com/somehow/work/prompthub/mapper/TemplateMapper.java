@@ -30,4 +30,18 @@ public interface TemplateMapper extends BaseMapper<Template> {
             "OR description LIKE CONCAT('%', #{keyword}, '%')) " +
             "ORDER BY use_count DESC")
     List<Template> searchByKeywordLike(@Param("keyword") String keyword);
+
+    /**
+     * 热门排行：综合热度分 = useCount*0.5 + avgRating*10*0.3 + favoriteCount*0.2
+     */
+    @Select("SELECT t.id AS templateId, t.title, u.username AS creatorName, " +
+            "t.price, t.use_count AS useCount, t.avg_rating AS avgRating, " +
+            "t.favorite_count AS favoriteCount, " +
+            "(t.use_count * 0.5 + COALESCE(t.avg_rating, 0) * 10 * 0.3 + t.favorite_count * 0.2) AS hotScore " +
+            "FROM template t " +
+            "INNER JOIN user u ON t.creator_id = u.id " +
+            "WHERE t.status = 1 " +
+            "ORDER BY hotScore DESC " +
+            "LIMIT #{limit}")
+    List<java.util.Map<String, Object>> hotRankingRaw(@Param("limit") int limit);
 }

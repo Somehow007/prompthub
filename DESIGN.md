@@ -740,6 +740,20 @@ Phase 1 ───► Phase 2 ───► Phase 3 ───► Phase 4 ───
 >
 > **访问控制修复**（06-29）：修复了付费模板无需购买即可查看/使用的严重安全漏洞。OrderService 新增 `isPurchased()` 和 `getPurchasedTemplateIds()`；TemplateDetailVO 新增 `hasPurchased` 字段；`getDetail()` 对未购买的付费模板隐藏 Prompt 内容；`recordUse()` 增加购买校验。UserProfileVO 新增 `purchasedTemplates`，个人主页新增"已购模板"Tab。前端 TemplateDetail.vue 增加内容门控（锁定界面+购买CTA）和购买状态追踪（✓已购买/✓已获取按钮）。编译+测试+类型检查+构建全部通过。
 
+> ✅ Phase 4 完成于 2026-06-29。
+>
+> **后端新增**（6 个文件）：5 个 VO（HotTemplateVO, UsageTrendVO, IncomeTrendVO, CreatorDashboardVO, PlatformOverviewVO + DailyNewUsersVO）、1 个 Service（StatisticsService + StatisticsServiceImpl）、1 个 Controller（StatisticsController）。更新了 4 个 Mapper（TemplateMapper 新增 hotRankingRaw, UsageLogMapper 新增 dailyTrend/dailyTrendForCreator, OrderMapper 新增 monthlyIncome/totalTransactionAmount/totalOrders, UserMapper 新增 countNewUsersByDay/callUpdateCreatorLevels）和主应用类（新增 @EnableScheduling）。
+>
+> **前端新增**（2 个文件）：1 个 API（statistics.ts）、1 个页面（Dashboard.vue 平台总览页）。更新了 3 个页面（Home.vue 新增热门排行侧栏、Profile.vue 新增"数据看板"Tab 含使用趋势折线图和收入趋势柱状图、router/index.ts 新增 /dashboard 路由）。
+>
+> **Phase 4 核心成果**：
+> - 热门排行：综合热度分公式（useCount×0.5 + avgRating×10×0.3 + favoriteCount×0.2），首页侧栏 + 看板页展示
+> - 使用趋势：ECharts 折线图展示近30天每日使用次数，支持单模板和创作者聚合
+> - 创作者看板：Profile.vue 新增"数据看板"Tab，含统计卡片 + 使用趋势图 + 收入趋势图
+> - 平台总览：Dashboard.vue 独立页面，总用户/模板/订单/交易额指标卡片 + 新增用户趋势图
+> - 创作者等级：MySQL 存储过程 + Spring @Scheduled 每日凌晨3点自动更新
+> - 编译+测试+类型检查+构建全部通过。
+
 ---
 
 ### Phase 3：交易与互动（预计 2 天）
@@ -974,32 +988,51 @@ LIMIT 20;
 
 ### 8.4 创作者等级更新存储过程
 
+> 修复于 2026-06-29：原版本使用 `WHERE u.id IN (SELECT ...)` 语法，但 CASE 表达式引用了子查询内的 `total_use`/`avg_rating` 别名，这些列对 UPDATE 外部不可见，会导致 `Unknown column` 错误。改为 `INNER JOIN` 使聚合列可直接引用。
+
 ```sql
+-- 等级规则：综合累计使用次数和平均评分
+-- Lv5: ≥1000次使用 + ≥4.5均分 (大师)
+-- Lv4: ≥500次使用  + ≥4.0均分 (专家)
+-- Lv3: ≥200次使用  + ≥3.5均分 (资深)
+-- Lv2: ≥50次使用   + ≥3.0均分 (进阶)
+-- Lv1: ≥10次使用                  (入门)
+-- Lv0: 默认                         (新手)
+
+DROP PROCEDURE IF EXISTS `update_creator_levels`;
+
 DELIMITER //
-CREATE PROCEDURE update_creator_levels()
+
+CREATE PROCEDURE `update_creator_levels`()
 BEGIN
-  UPDATE user u
-  SET u.creator_level =
-    CASE
-      WHEN total_use >= 1000 AND avg_rating >= 4.5 THEN 5
-      WHEN total_use >= 500  AND avg_rating >= 4.0 THEN 4
-      WHEN total_use >= 200  AND avg_rating >= 3.5 THEN 3
-      WHEN total_use >= 50   AND avg_rating >= 3.0 THEN 2
-      WHEN total_use >= 10                     THEN 1
-      ELSE 0
-    END
-  WHERE u.id IN (
-    SELECT creator_id FROM (
-      SELECT t.creator_id,
-             SUM(t.use_count) AS total_use,
-             AVG(t.avg_rating) AS avg_rating
-      FROM template t
-      GROUP BY t.creator_id
-    ) AS stats
-  );
+    SET SQL_SAFE_UPDATES = 0;
+
+    UPDATE `user` u
+    INNER JOIN (
+        SELECT
+            t.creator_id,
+            SUM(t.use_count) AS total_use,
+            AVG(t.avg_rating) AS avg_rating
+        FROM `template` t
+        GROUP BY t.creator_id
+    ) AS stats ON u.id = stats.creator_id
+    SET u.creator_level =
+        CASE
+            WHEN stats.total_use >= 1000 AND stats.avg_rating >= 4.5 THEN 5
+            WHEN stats.total_use >= 500  AND stats.avg_rating >= 4.0 THEN 4
+            WHEN stats.total_use >= 200  AND stats.avg_rating >= 3.5 THEN 3
+            WHEN stats.total_use >= 50   AND stats.avg_rating >= 3.0 THEN 2
+            WHEN stats.total_use >= 10                        THEN 1
+            ELSE 0
+        END;
+
+    SET SQL_SAFE_UPDATES = 1;
 END //
+
 DELIMITER ;
 ```
+
+> **调度**：Spring Boot 端通过 `@Scheduled(cron = "0 0 3 * * ?")` 每日凌晨 3:00 自动调用。无需手动维护。无模板的用户不会被更新（保持当前等级）。
 
 ---
 
@@ -1122,6 +1155,6 @@ prompthub-frontend/                        # 前端项目根目录
 
 ---
 
-> **当前进度**：Phase 1 ✅ → Phase 2 ✅ → Phase 3 ✅（含访问控制修复）→ **Phase 4 待开始**。
+> **当前进度**：Phase 1 ✅ → Phase 2 ✅ → Phase 3 ✅（含访问控制修复）→ Phase 4 ✅ → **Phase 5 待开始**。
 >
-> 已验证：后端 62 个源文件编译通过 + 1 个测试通过，前端 1694 个模块构建成功。数据库 11 张表 + 种子数据就位。
+> 已验证：后端 77 个源文件编译通过 + 1 个测试通过，前端构建成功。数据库 11 张表 + 种子数据就位。

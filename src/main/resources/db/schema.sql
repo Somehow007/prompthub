@@ -2,6 +2,8 @@
 -- 智享AI提示词平台 — 完整建表 DDL
 -- 数据库: prompthub
 -- 设计依据: 3NF 范式 + 实际查询性能权衡
+-- 适用: MySQL 8.0+
+-- 执行方式: mysql -u root -p < schema.sql
 -- ============================================================
 
 CREATE DATABASE IF NOT EXISTS prompthub
@@ -13,18 +15,18 @@ USE prompthub;
 -- 1. 用户表
 -- ============================================================
 CREATE TABLE IF NOT EXISTS `user` (
-  `id`            BIGINT       NOT NULL AUTO_INCREMENT COMMENT '用户ID',
-  `username`      VARCHAR(50)  NOT NULL COMMENT '用户名，唯一',
-  `password_hash` VARCHAR(255) NOT NULL COMMENT '密码哈希（bcrypt）',
-  `email`         VARCHAR(100) DEFAULT NULL COMMENT '邮箱',
-  `phone`         VARCHAR(20)  DEFAULT NULL COMMENT '手机号',
-  `avatar_url`    VARCHAR(500) DEFAULT NULL COMMENT '头像URL',
-  `creator_level` TINYINT      NOT NULL DEFAULT 0 COMMENT '创作者等级（0-5，系统自动计算）',
+  `id`            BIGINT        NOT NULL AUTO_INCREMENT COMMENT '用户ID',
+  `username`      VARCHAR(50)   NOT NULL COMMENT '用户名，唯一',
+  `password_hash` VARCHAR(255)  NOT NULL COMMENT '密码哈希（bcrypt）',
+  `email`         VARCHAR(100)  DEFAULT NULL COMMENT '邮箱',
+  `phone`         VARCHAR(20)   DEFAULT NULL COMMENT '手机号',
+  `avatar_url`    VARCHAR(500)  DEFAULT NULL COMMENT '头像URL',
+  `creator_level` TINYINT       NOT NULL DEFAULT 0 COMMENT '创作者等级（0-5，系统自动计算）',
   `balance`       DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT '账户余额',
-  `role`          VARCHAR(20)  NOT NULL DEFAULT 'user' COMMENT '角色：user/admin',
-  `status`        TINYINT      NOT NULL DEFAULT 1 COMMENT '状态：1-正常 0-禁用',
-  `created_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '注册时间',
-  `updated_at`    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `role`          VARCHAR(20)   NOT NULL DEFAULT 'user' COMMENT '角色：user/admin',
+  `status`        TINYINT       NOT NULL DEFAULT 1 COMMENT '状态：1-正常 0-禁用',
+  `created_at`    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '注册时间',
+  `updated_at`    DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_username` (`username`),
   UNIQUE KEY `uk_email` (`email`),
@@ -49,7 +51,7 @@ CREATE TABLE IF NOT EXISTS `tag` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='标签表（支持层级关系）';
 
 -- ============================================================
--- 3. 模板表
+-- 3. 模板表（核心业务表）
 -- ============================================================
 CREATE TABLE IF NOT EXISTS `template` (
   `id`              BIGINT        NOT NULL AUTO_INCREMENT COMMENT '模板ID',
@@ -64,7 +66,7 @@ CREATE TABLE IF NOT EXISTS `template` (
   `use_count_7d`    INT           NOT NULL DEFAULT 0 COMMENT '近7天使用次数',
   `favorite_count`  INT           NOT NULL DEFAULT 0 COMMENT '收藏数',
   `review_count`    INT           NOT NULL DEFAULT 0 COMMENT '评价数',
-  `avg_rating`      DECIMAL(2,1)  NOT NULL DEFAULT 0.0 COMMENT '平均评分',
+  `avg_rating`      DECIMAL(2,1)  NOT NULL DEFAULT 0.0 COMMENT '平均评分（冗余，避免频繁JOIN聚合）',
   `created_at`      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at`      DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
@@ -119,7 +121,7 @@ CREATE TABLE IF NOT EXISTS `review` (
   `content`     VARCHAR(2000)  DEFAULT NULL COMMENT '评价内容',
   `created_at`  DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '评价时间',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_user_template` (`user_id`, `template_id`),
+  UNIQUE KEY `uk_review_user_template` (`user_id`, `template_id`),
   KEY `idx_template_id` (`template_id`),
   KEY `idx_rating` (`rating`),
   CONSTRAINT `fk_review_user` FOREIGN KEY (`user_id`) REFERENCES `user`(`id`),
@@ -132,7 +134,7 @@ CREATE TABLE IF NOT EXISTS `review` (
 -- ============================================================
 CREATE TABLE IF NOT EXISTS `order` (
   `id`          BIGINT         NOT NULL AUTO_INCREMENT COMMENT '订单ID',
-  `order_no`    VARCHAR(32)    NOT NULL COMMENT '订单编号',
+  `order_no`    VARCHAR(32)    NOT NULL COMMENT '订单编号（业务唯一）',
   `user_id`     BIGINT         NOT NULL COMMENT '用户ID',
   `template_id` BIGINT         NOT NULL COMMENT '模板ID',
   `amount`      DECIMAL(10,2)  NOT NULL COMMENT '交易金额',
@@ -143,6 +145,7 @@ CREATE TABLE IF NOT EXISTS `order` (
   UNIQUE KEY `uk_order_no` (`order_no`),
   KEY `idx_user_id` (`user_id`),
   KEY `idx_template_id` (`template_id`),
+  KEY `idx_user_template_status` (`user_id`, `template_id`, `status`),
   KEY `idx_created_at` (`created_at`),
   CONSTRAINT `fk_order_user` FOREIGN KEY (`user_id`) REFERENCES `user`(`id`),
   CONSTRAINT `fk_order_template` FOREIGN KEY (`template_id`) REFERENCES `template`(`id`)
@@ -193,7 +196,7 @@ CREATE TABLE IF NOT EXISTS `favorite` (
   `template_id` BIGINT   NOT NULL COMMENT '模板ID',
   `created_at`  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '收藏时间',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_user_template` (`user_id`, `template_id`),
+  UNIQUE KEY `uk_fav_user_template` (`user_id`, `template_id`),
   KEY `idx_template_id` (`template_id`),
   CONSTRAINT `fk_fav_user` FOREIGN KEY (`user_id`) REFERENCES `user`(`id`),
   CONSTRAINT `fk_fav_template` FOREIGN KEY (`template_id`) REFERENCES `template`(`id`) ON DELETE CASCADE
@@ -220,27 +223,40 @@ CREATE TABLE IF NOT EXISTS `income_record` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='创作者收入明细表';
 
 -- ============================================================
--- 种子数据：初始化标签体系
+-- 12. 创作者等级更新存储过程
+-- 根据模板累计使用次数和平均评分，自动计算创作者等级
+-- 由 Spring @Scheduled 每天凌晨3点调用：CALL update_creator_levels()
 -- ============================================================
-INSERT INTO `tag` (`name`, `parent_id`, `level`, `sort_order`) VALUES
-('写作',   NULL, 1, 1),
-('翻译',   NULL, 1, 2),
-('编程',   NULL, 1, 3),
-('设计',   NULL, 1, 4),
-('教育',   NULL, 1, 5),
-('商业',   NULL, 1, 6),
-('Python',  3, 2, 1),
-('Java',    3, 2, 2),
-('JavaScript', 3, 2, 3),
-('Go',      3, 2, 4),
-('文案写作', 1, 2, 1),
-('小说创作', 1, 2, 2),
-('论文润色', 1, 2, 3),
-('中译英',   2, 2, 1),
-('英译中',   2, 2, 2),
-('UI设计',   4, 2, 1),
-('Logo设计', 4, 2, 2),
-('教案设计', 5, 2, 1),
-('题目生成', 5, 2, 2),
-('商业计划', 6, 2, 1),
-('营销文案', 6, 2, 2);
+
+DROP PROCEDURE IF EXISTS `update_creator_levels`;
+
+DELIMITER //
+
+CREATE PROCEDURE `update_creator_levels`()
+BEGIN
+    -- 临时关闭安全更新模式，因为此 UPDATE 用 INNER JOIN 限定范围，不涉及全表更新
+    SET SQL_SAFE_UPDATES = 0;
+
+    UPDATE `user` u
+    INNER JOIN (
+        SELECT
+            t.creator_id,
+            SUM(t.use_count) AS total_use,
+            AVG(t.avg_rating) AS avg_rating
+        FROM `template` t
+        GROUP BY t.creator_id
+    ) AS stats ON u.id = stats.creator_id
+    SET u.creator_level =
+        CASE
+            WHEN stats.total_use >= 1000 AND stats.avg_rating >= 4.5 THEN 5
+            WHEN stats.total_use >= 500  AND stats.avg_rating >= 4.0 THEN 4
+            WHEN stats.total_use >= 200  AND stats.avg_rating >= 3.5 THEN 3
+            WHEN stats.total_use >= 50   AND stats.avg_rating >= 3.0 THEN 2
+            WHEN stats.total_use >= 10                        THEN 1
+            ELSE 0
+        END;
+
+    SET SQL_SAFE_UPDATES = 1;
+END //
+
+DELIMITER ;

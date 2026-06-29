@@ -1,13 +1,21 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import { getUserProfile, recharge, type UserProfileVO } from '@/api/user'
 import { getFavorites } from '@/api/favorite'
 import { getOrders, type OrderVO } from '@/api/order'
 import type { TemplateVO } from '@/api/template'
+import { getCreatorDashboard, type CreatorDashboardVO } from '@/api/statistics'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import TemplateCard from '@/components/TemplateCard.vue'
+import VChart from 'vue-echarts'
+import { use } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+import { LineChart, BarChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent, LegendComponent, TitleComponent } from 'echarts/components'
+
+use([CanvasRenderer, LineChart, BarChart, GridComponent, TooltipComponent, LegendComponent, TitleComponent])
 
 const route = useRoute()
 const router = useRouter()
@@ -21,6 +29,62 @@ const activeTab = ref('templates')
 // 额外数据（仅本人可见）
 const favorites = ref<TemplateVO[]>([])
 const orders = ref<OrderVO[]>([])
+const dashboard = ref<CreatorDashboardVO | null>(null)
+
+// 数据看板图表配置
+const usageTrendOption = computed(() => {
+  if (!dashboard.value) return {}
+  const data = dashboard.value.usageTrend
+  return {
+    tooltip: { trigger: 'axis' },
+    grid: { left: 40, right: 12, top: 12, bottom: 28 },
+    xAxis: {
+      type: 'category',
+      data: data.map(d => d.date.slice(5)),
+      axisLabel: { fontSize: 10, color: '#94a3b8' },
+      axisLine: { lineStyle: { color: '#e2e8f0' } },
+    },
+    yAxis: {
+      type: 'value', minInterval: 1,
+      axisLabel: { fontSize: 10, color: '#94a3b8' },
+      splitLine: { lineStyle: { color: '#f1f5f9' } },
+    },
+    series: [{
+      type: 'line', data: data.map(d => d.count),
+      smooth: true, symbol: 'circle', symbolSize: 3,
+      lineStyle: { color: '#4f46e5', width: 2 },
+      itemStyle: { color: '#4f46e5' },
+      areaStyle: { color: 'rgba(79, 70, 229, 0.06)' },
+    }],
+  }
+})
+
+const incomeTrendOption = computed(() => {
+  if (!dashboard.value) return {}
+  const data = dashboard.value.incomeTrend
+  return {
+    tooltip: { trigger: 'axis' },
+    grid: { left: 48, right: 12, top: 12, bottom: 28 },
+    xAxis: {
+      type: 'category', data: data.map(d => d.month),
+      axisLabel: { fontSize: 10, color: '#94a3b8' },
+      axisLine: { lineStyle: { color: '#e2e8f0' } },
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: { fontSize: 10, color: '#94a3b8', formatter: '¥{value}' },
+      splitLine: { lineStyle: { color: '#f1f5f9' } },
+    },
+    series: [{
+      type: 'bar', data: data.map(d => d.amount),
+      barWidth: 20,
+      itemStyle: {
+        color: '#4f46e5',
+        borderRadius: [4, 4, 0, 0],
+      },
+    }],
+  }
+})
 
 function statusText(status: number): string {
   if (status === 1) return '已完成'
@@ -117,12 +181,15 @@ function goToFavorites() {
 
 async function handleTabChange(tab: string) {
   activeTab.value = tab
-  // 切换到收藏/订单 tab 时刷新数据
+  // 切换到收藏/订单/看板 tab 时刷新数据
   if (tab === 'favorites' && isSelf.value) {
     try { favorites.value = await getFavorites() } catch { /* */ }
   }
   if (tab === 'orders' && isSelf.value) {
     try { orders.value = await getOrders() } catch { /* */ }
+  }
+  if (tab === 'dashboard' && isSelf.value) {
+    try { dashboard.value = await getCreatorDashboard() } catch { /* */ }
   }
 }
 
@@ -225,6 +292,13 @@ onMounted(() => {
           已购模板
         </button>
         <button
+          v-if="isSelf"
+          :class="['tab-btn', { active: activeTab === 'dashboard' }]"
+          @click="handleTabChange('dashboard')"
+        >
+          数据看板
+        </button>
+        <button
           :class="['tab-btn', { active: activeTab === 'income' }]"
           @click="handleTabChange('income')"
         >
@@ -306,6 +380,56 @@ onMounted(() => {
         <div v-else class="empty-tab">
           <p>还没有购买任何模板</p>
           <router-link to="/" class="create-link">去广场逛逛</router-link>
+        </div>
+      </div>
+
+      <!-- Tab: 数据看板（仅本人） -->
+      <div v-if="activeTab === 'dashboard' && isSelf" class="tab-content">
+        <div v-if="dashboard" class="dashboard-grid">
+          <!-- 看板统计卡片 -->
+          <div class="dash-cards">
+            <div class="dash-card">
+              <span class="dash-value">{{ dashboard.totalTemplates }}</span>
+              <span class="dash-label">模板数</span>
+            </div>
+            <div class="dash-card">
+              <span class="dash-value">{{ dashboard.totalUseCount.toLocaleString() }}</span>
+              <span class="dash-label">总使用次数</span>
+            </div>
+            <div class="dash-card">
+              <span class="dash-value">¥{{ dashboard.totalIncome.toFixed(2) }}</span>
+              <span class="dash-label">总收入</span>
+            </div>
+            <div class="dash-card">
+              <span class="dash-value">{{ dashboard.avgRating.toFixed(1) }}</span>
+              <span class="dash-label">平均评分</span>
+            </div>
+          </div>
+
+          <!-- 使用趋势图 -->
+          <div class="dash-chart-panel">
+            <h3 class="dash-chart-title">📈 近30天使用趋势</h3>
+            <VChart
+              v-if="dashboard.usageTrend.length > 0"
+              :option="usageTrendOption"
+              style="height: 240px;"
+            />
+            <p v-else class="no-data">暂无使用数据</p>
+          </div>
+
+          <!-- 收入趋势图 -->
+          <div class="dash-chart-panel">
+            <h3 class="dash-chart-title">💰 近12个月收入趋势</h3>
+            <VChart
+              v-if="dashboard.incomeTrend.length > 0"
+              :option="incomeTrendOption"
+              style="height: 240px;"
+            />
+            <p v-else class="no-data">暂无收入数据</p>
+          </div>
+        </div>
+        <div v-else class="empty-tab">
+          <p>加载中...</p>
         </div>
       </div>
 
@@ -705,6 +829,62 @@ onMounted(() => {
 .type-badge.refund {
   background: #fee2e2;
   color: #dc2626;
+}
+
+/* 数据看板 */
+.dashboard-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.dash-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.dash-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 18px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 0 0 1px #e2e8f0;
+}
+
+.dash-value {
+  display: block;
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 4px;
+}
+
+.dash-label {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.dash-chart-panel {
+  background: #fff;
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 0 0 1px #e2e8f0;
+}
+
+.dash-chart-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0 0 10px;
+}
+
+.no-data {
+  text-align: center;
+  color: #94a3b8;
+  padding: 40px 0;
+  font-size: 13px;
+  margin: 0;
 }
 
 @media (max-width: 768px) {

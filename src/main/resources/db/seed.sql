@@ -13,8 +13,8 @@ INSERT INTO `user` (`id`, `username`, `password_hash`, `email`, `phone`, `avatar
 (1,  'admin',    '$2a$10$m6YUrtWcI72X8n5oojSN8ef/a2k3iEh6nIKaUg0hh2nxjy36sYgTK', 'admin@prompthub.com',    '13800000001', NULL, 5, 9999.00, 'admin', 1, '2026-05-01 10:00:00'),
 (2,  'xiaoming', '$2a$10$m6YUrtWcI72X8n5oojSN8ef/a2k3iEh6nIKaUg0hh2nxjy36sYgTK', 'xiaoming@example.com',  '13800000002', NULL, 3,  850.50, 'user',  1, '2026-05-15 14:30:00'),
 (3,  'xiaohong', '$2a$10$m6YUrtWcI72X8n5oojSN8ef/a2k3iEh6nIKaUg0hh2nxjy36sYgTK', 'xiaohong@example.com',  '13800000003', NULL, 2,  420.00, 'user',  1, '2026-05-20 09:15:00'),
-(4,  'tester',   '$2a$10$m6YUrtWcI72X8n5oojSN8ef/a2k3iEh6nIKaUg0hh2nxjy36sYgTK', 'tester@example.com',    '13800000004', NULL, 0,  100.00, 'user',  1, '2026-06-01 16:00:00'),
-(5,  'demo',     '$2a$10$m6YUrtWcI72X8n5oojSN8ef/a2k3iEh6nIKaUg0hh2nxjy36sYgTK', 'demo@example.com',      '13800000005', NULL, 0,    0.00, 'user',  1, '2026-06-10 11:00:00'),
+(4,  'tester',   '$2a$10$m6YUrtWcI72X8n5oojSN8ef/a2k3iEh6nIKaUg0hh2nxjy36sYgTK', 'tester@example.com',    '13800000004', NULL, 0,   66.30, 'user',  1, '2026-06-01 16:00:00'),
+(5,  'demo',     '$2a$10$m6YUrtWcI72X8n5oojSN8ef/a2k3iEh6nIKaUg0hh2nxjy36sYgTK', 'demo@example.com',      '13800000005', NULL, 0,   41.10, 'user',  1, '2026-06-10 11:00:00'),
 (6,  'alice',    '$2a$10$m6YUrtWcI72X8n5oojSN8ef/a2k3iEh6nIKaUg0hh2nxjy36sYgTK', 'alice@example.com',     '13800000006', NULL, 1,  180.00, 'user',  1, '2026-05-25 08:45:00');
 
 -- ============================================================
@@ -316,8 +316,13 @@ INSERT INTO `favorite` (`id`, `user_id`, `template_id`, `created_at`) VALUES
 -- 标签：22 个（5 一级 + 17 二级）
 -- 模板：12 个（5 free + 7 paid；10 上架 + 1 下架 + 1 审核中）
 -- 版本：16 条（4 个模板有多版本）
--- 订单：10 条（8 已完成 + 1 已取消；4 免费 + 6 付费）
+-- 订单：10 条（8 已完成 + 1 已取消 + 1 待支付；4 免费 + 6 付费）
 -- 收入：5 条
 -- 使用日志：25 条
 -- 评价：14 条
 -- 收藏：10 条
+
+-- ============================================================
+-- 11. 初始化创作者等级（根据种子数据计算）
+-- ============================================================
+CALL update_creator_levels();

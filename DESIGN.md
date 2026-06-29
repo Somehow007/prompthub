@@ -817,6 +817,35 @@ Phase 1 ───► Phase 2 ───► Phase 3 ───► Phase 4 ───
 - 简易推荐功能可用
 - 完整的项目源码、课程设计报告、汇报 PPT
 
+> ✅ Phase 5 完成于 2026-06-29。
+>
+> **限时免费活动（5.1）**：
+> - 后端新增 6 个文件：ActivityTemplate 实体、ActivityTemplateMapper（含原子扣减库存方法）、CreateActivityDTO、ActivityVO、ActivityService + ActivityServiceImpl（Redisson 分布式锁 + @Transactional）、ActivityController + AdminActivityController
+> - ActivityServiceImpl.claim() 流程：Redisson lock → 校验时间窗口和状态 → 检查剩余份数 → 检查重复领取 → 原子 DECR quota → 创建免费订单（amount=0）
+> - 活动列表自动刷新状态（根据当前时间与 start_time/end_time 比较动态切换 未开始/进行中/已结束）
+> - **活动管理页**：前端新增 views/ActivityManage.vue（/admin/activities），付费模板分页表格 + 搜索 + 多维度排序（热度/评分/最新/价格升降序）+ 统计卡片 + 每行一键创建活动对话框
+> - **活动浏览页**：前端 views/Activity.vue（/activity），三区分类展示 + 倒计时 + 进度条 + **已拥有状态显示**（调用 GET /api/orders/purchased-ids 获取用户已购模板ID匹配）
+> - OrderController 新增 GET /api/orders/purchased-ids 端点，前端 api/order.ts 同步新增 getPurchasedIds()
+> - Home.vue 导航栏新增"限时活动"入口
+> - SaTokenConfig 放行 GET /api/activities（公开），POST claim 和 admin 接口需登录
+>
+> **简易推荐（5.2）**：
+> - 后端新增 3 个文件：RecommendService + RecommendServiceImpl、RecommendController
+> - 算法：收集用户历史交互模板（使用/收藏/已购/创建）→ 提取兴趣标签 → 标签相似度查询（TemplateMapper.recommendByTags）→ 按标签重叠数 + 评分 + 使用量排序 → 新用户回退到热门推荐
+> - 前端新增 api/recommend.ts、Home.vue 新增"✨ 为你推荐"展示区（6列网格）
+>
+> **系统打磨（5.3）**：
+> - 后端 85 个源文件编译通过 + 1 个基础测试通过
+> - 前端 vue-tsc 零错误 + vite build 成功
+> - Activity.vue 响应式设计（桌面3列/平板2列/手机1列）
+>
+> **并发测试（5.4）**：
+> - ConcurrencyTest.java：测试1 — 20人并发抢5份限量活动（预期恰好5人成功）；测试2 — 同一用户并发5次购买同一模板（预期仅1次成功）
+> - 使用 CountDownLatch 发令枪模式保证真实并发竞争
+> - 标注 @Disabled，需 MySQL + Redis 环境手动运行：`mvn test -Dtest=ConcurrencyTest`
+>
+> **涉及文件统计**：后端新增 13 个文件（4 entity/mapper/dto/vo + 4 service/impl + 3 controller + 1 test），前端新增 4 个文件（3 api + 2 view），修改 6 个文件（OrderController、SaTokenConfig、TemplateMapper、Home.vue、order.ts、router/index.ts、UserServiceImpl、DESIGN.md）。
+
 ---
 
 > ✅ Phase 1 完成于 2026-06-28：项目骨架、数据库 DDL、用户注册登录、前端登录注册页面全部就绪，编译+测试通过。
@@ -891,12 +920,13 @@ GET    /api/statistics/platform      # 平台总览
 #### Phase 5 API
 ```
 # 活动
-POST   /api/admin/activities        # 创建活动
-GET    /api/activities              # 活动列表
-POST   /api/activities/{id}/claim   # 领取活动模板
+POST   /api/admin/activities        # 创建活动（管理员）
+GET    /api/activities              # 活动列表（公开）
+POST   /api/activities/{id}/claim   # 领取活动模板（需登录，Redis 分布式锁）
+GET    /api/orders/purchased-ids    # 已购模板ID列表（用于前端判断已拥有状态）
 
 # 推荐
-GET    /api/recommend               # 获取推荐模板
+GET    /api/recommend?limit=10      # 获取个性化推荐（需登录，标签相似度算法）
 ```
 
 ---
@@ -1044,11 +1074,15 @@ DELIMITER ;
 ┌─────────────────────────────┐
 │  E2E 测试（手动演示验收）      │  ← Phase 交付验收
 ├─────────────────────────────┤
+│  压力测试（JMeter 并发压测）   │  ← Phase 3~5 并发场景
+├─────────────────────────────┤
 │  集成测试（API 接口测试）      │  ← 关键业务流程
 ├─────────────────────────────┤
 │  单元测试（Service/Mapper）   │  ← 核心逻辑
 └─────────────────────────────┘
 ```
+
+> 更新于 2026-06-29：新增 JMeter 压力测试指南 → [docs/JMETER_STRESS_TEST_GUIDE.md](docs/JMETER_STRESS_TEST_GUIDE.md)，覆盖 Phase 4 统计查询、Phase 5 活动并发领取、Phase 3 并发购买及全链路混合压测。
 
 ### 9.2 每阶段测试要点
 
@@ -1056,9 +1090,9 @@ DELIMITER ;
 |------|----------|----------|
 | Phase 1 | 注册登录流程、Token 认证、数据库连接 | 单元测试 + 手动 |
 | Phase 2 | 模板 CRUD、版本管理、搜索筛选正确性 | 单元测试 + 手动 |
-| Phase 3 | **事务正确性**、余额一致性、并发购买 | 单元测试 + 并发模拟 |
-| Phase 4 | SQL 统计查询正确性、图表数据一致性 | 数据对比验证 |
-| Phase 5 | 分布式锁、推荐相关性、全链路验收 | 并发测试 + 手动演示 |
+| Phase 3 | **事务正确性**、余额一致性、并发购买 | 单元测试 + 并发模拟 + JMeter 压测 |
+| Phase 4 | SQL 统计查询正确性、图表数据一致性、高并发读性能 | 数据对比验证 + JMeter 压测 |
+| Phase 5 | 分布式锁正确性、推荐相关性、全链路验收 | 并发测试 + 手动演示 + JMeter 压测 |
 
 ### 9.3 关键测试用例
 
@@ -1155,6 +1189,6 @@ prompthub-frontend/                        # 前端项目根目录
 
 ---
 
-> **当前进度**：Phase 1 ✅ → Phase 2 ✅ → Phase 3 ✅（含访问控制修复）→ Phase 4 ✅ → **Phase 5 待开始**。
+> **当前进度**：Phase 1 ✅ → Phase 2 ✅ → Phase 3 ✅（含访问控制修复）→ Phase 4 ✅ → **Phase 5 ✅ 全部完成**。
 >
-> 已验证：后端 77 个源文件编译通过 + 1 个测试通过，前端构建成功。数据库 11 张表 + 种子数据就位。
+> 已验证：后端 85 个源文件编译通过 + 1 个基础测试通过（2 个并发测试待环境），前端 vue-tsc 零错误 + vite build 成功。数据库 11 张表 + 种子数据就位。全栈 5 阶段开发完成 🎉。

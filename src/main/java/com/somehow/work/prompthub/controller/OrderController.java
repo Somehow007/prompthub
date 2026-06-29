@@ -34,4 +34,12 @@ public class OrderController {
         List<OrderVO> list = orderService.listOrders(userId);
         return Result.ok(list);
     }
+
+    /** 获取已购买的模板ID列表（用于前端判断是否已拥有） */
+    @GetMapping("/purchased-ids")
+    public Result<List<Long>> purchasedIds() {
+        long userId = StpUtil.getLoginIdAsLong();
+        List<Long> ids = orderService.getPurchasedTemplateIds(userId);
+        return Result.ok(ids);
+    }
 }

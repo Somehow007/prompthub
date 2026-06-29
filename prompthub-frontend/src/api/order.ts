@@ -25,3 +25,8 @@ export function purchaseTemplate(templateId: number): Promise<OrderVO> {
 export function getOrders(): Promise<OrderVO[]> {
   return request.get('/orders')
 }
+
+/** 获取已购买的模板ID列表 */
+export function getPurchasedIds(): Promise<number[]> {
+  return request.get('/orders/purchased-ids')
+}

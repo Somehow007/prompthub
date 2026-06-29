@@ -23,7 +23,8 @@ public class SaTokenConfig implements WebMvcConfigurer {
                         "/api/tags",                     // 标签公开访问
                         "/api/templates/**",             // 模板浏览公开（创建/编辑需额外权限校验）
                         "/api/statistics/ranking",       // 排行公开
-                        "/api/statistics/platform"       // 平台总览公开
+                        "/api/statistics/platform",      // 平台总览公开
+                        "/api/activities"                // 活动列表公开（领取需登录）
                 );
     }
 }

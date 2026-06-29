@@ -56,6 +56,17 @@ const router = createRouter({
       name: 'dashboard',
       component: () => import('@/views/Dashboard.vue'),
     },
+    {
+      path: '/activity',
+      name: 'activity',
+      component: () => import('@/views/Activity.vue'),
+    },
+    {
+      path: '/admin/activities',
+      name: 'admin-activities',
+      component: () => import('@/views/ActivityManage.vue'),
+      meta: { requiresAuth: true },
+    },
   ],
 })
 

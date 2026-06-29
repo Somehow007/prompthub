@@ -94,6 +94,8 @@ public class UserServiceImpl implements UserService {
 
         // Sa-Token 登录
         StpUtil.login(user.getId());
+        // 存储角色信息到 Session，供 AdminActivityController 等鉴权使用
+        StpUtil.getSession().set("role", user.getRole());
 
         // 构建返回
         String token = StpUtil.getTokenValue();

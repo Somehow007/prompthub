@@ -5,6 +5,7 @@ import { useUserStore } from '@/stores/user'
 import { getTemplates, type TemplateVO, type TemplateQueryDTO } from '@/api/template'
 import { getTags, type TagVO } from '@/api/tag'
 import { getHotRanking, type HotTemplateVO } from '@/api/statistics'
+import { getRecommend } from '@/api/recommend'
 import SearchBar from '@/components/SearchBar.vue'
 import TagSelector from '@/components/TagSelector.vue'
 import TemplateCard from '@/components/TemplateCard.vue'
@@ -42,6 +43,18 @@ const ranking = ref<HotTemplateVO[]>([])
 async function loadRanking() {
   try {
     ranking.value = await getHotRanking(10)
+  } catch {
+    // ignore
+  }
+}
+
+// 个性化推荐
+const recommendations = ref<TemplateVO[]>([])
+
+async function loadRecommendations() {
+  if (!userStore.userInfo) return
+  try {
+    recommendations.value = await getRecommend(6)
   } catch {
     // ignore
   }
@@ -122,6 +135,7 @@ onMounted(() => {
   loadTags()
   loadTemplates()
   loadRanking()
+  loadRecommendations()
 })
 </script>
 
@@ -137,6 +151,7 @@ onMounted(() => {
           </router-link>
           <nav class="nav">
             <router-link to="/" class="nav-link active">发现</router-link>
+            <router-link to="/activity" class="nav-link">限时活动</router-link>
           </nav>
         </div>
         <div class="header-right">
@@ -165,6 +180,22 @@ onMounted(() => {
         <p class="hero-sub">连接 AI 创造力与开发者智慧，找到适合你的提示词模板</p>
         <SearchBar @search="handleSearch" />
       </section>
+
+      <!-- 个性化推荐 -->
+      <div v-if="recommendations.length > 0" class="rec-section">
+        <div class="rec-header">
+          <h3 class="rec-title">✨ 为你推荐</h3>
+          <span class="rec-sub">基于你的兴趣标签智能推荐</span>
+        </div>
+        <div class="rec-grid">
+          <TemplateCard
+            v-for="t in recommendations"
+            :key="t.id"
+            :template="t"
+            @click="goToDetail"
+          />
+        </div>
+      </div>
 
       <!-- 内容区 -->
       <div class="content">
@@ -399,6 +430,51 @@ onMounted(() => {
   font-size: 15px;
   color: #94a3b8;
   margin-bottom: 28px;
+}
+
+/* ==================== 推荐区 ==================== */
+.rec-section {
+  width: 1200px;
+  max-width: 100%;
+  margin: 0 auto 16px;
+  padding: 0 24px;
+}
+
+.rec-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.rec-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0;
+}
+
+.rec-sub {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.rec-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 1200px) {
+  .rec-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .rec-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 /* ==================== 内容区 ==================== */

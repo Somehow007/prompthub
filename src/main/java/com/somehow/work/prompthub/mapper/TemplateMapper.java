@@ -15,6 +15,29 @@ import java.util.List;
 public interface TemplateMapper extends BaseMapper<Template> {
 
     /**
+     * 基于标签相似度推荐模板
+     * 排除用户已有模板，按标签重叠数+评分+使用量排序
+     */
+    @Select("<script>" +
+            "SELECT t.*, COUNT(DISTINCT tt.tag_id) AS tag_overlap " +
+            "FROM template t " +
+            "INNER JOIN template_tag tt ON t.id = tt.template_id " +
+            "WHERE t.status = 1 " +
+            "<if test='excludeIds != null and excludeIds.size() > 0'>" +
+            "  AND t.id NOT IN <foreach collection='excludeIds' item='id' open='(' separator=',' close=')'>#{id}</foreach> " +
+            "</if>" +
+            "<if test='tagIds != null and tagIds.size() > 0'>" +
+            "  AND tt.tag_id IN <foreach collection='tagIds' item='tid' open='(' separator=',' close=')'>#{tid}</foreach> " +
+            "</if>" +
+            "GROUP BY t.id " +
+            "ORDER BY tag_overlap DESC, t.avg_rating DESC, t.use_count DESC " +
+            "LIMIT #{limit}" +
+            "</script>")
+    List<Template> recommendByTags(@Param("tagIds") List<Long> tagIds,
+                                   @Param("excludeIds") List<Long> excludeIds,
+                                   @Param("limit") int limit);
+
+    /**
      * 全文搜索模板（BOOLEAN 模式）
      */
     @Select("SELECT * FROM template WHERE status = 1 " +
